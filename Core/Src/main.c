@@ -162,6 +162,44 @@ HAL_StatusTypeDef init_mpu6050()
     printf("Initialization Complete: id %d\r\n", who);
     return 0;
 }
+
+HAL_StatusTypeDef get_accel(float* accel_data)
+{
+	/*
+	 * there are 6x 1-byte registers on the mcu6050 for
+	 * the accelerometer: X-high X-low Y-high Y-low Z-high Z-low
+	 * this will pack the high and low bytes for each into a single
+	 * uint16
+	 */
+
+	HAL_StatusTypeDef err = 0;
+	uint8_t accel_buffer[6];
+	int16_t accel_vals[3]; // this should be signed?
+
+    err = HAL_I2C_Mem_Read(
+		   &hi2c1
+		  , MPU_I2C_ADDRESS
+		  , MPU_ACCEL_XOUT_H // start at x-high and read 6 after
+		  , 1 // mem address size
+		  , accel_buffer
+		  , 6 // buff size
+		  , 1000 // timeout
+		  );
+    if(err)
+    	return err;
+
+    accel_vals[0] = (uint16_t)(accel_buffer[0] << 8  | accel_buffer[1]);
+    accel_vals[1] = (uint16_t)(accel_buffer[2] << 8  | accel_buffer[3]);
+    accel_vals[2] = (uint16_t)(accel_buffer[4] << 8  | accel_buffer[5]);
+
+    for(int ii = 0; ii < 3; ++ii)
+    {
+		accel_data[ii] = accel_vals[ii] / 16384.0;
+    }
+
+	return err;
+}
+
 /* USER CODE END 0 */
 
 /**
@@ -209,6 +247,9 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
+	  float accel_data[3];
+	  get_accel(accel_data);
+	  printf("x: %f y: %f z: %f\r\n", accel_data[0], accel_data[1], accel_data[2]);
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
