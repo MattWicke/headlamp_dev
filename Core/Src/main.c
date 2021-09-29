@@ -19,10 +19,12 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
-#include <stdio.h>
+
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "mpu_util.h"
+#include <stdio.h>
+#include <math.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -42,6 +44,8 @@
 /* Private variables ---------------------------------------------------------*/
 I2C_HandleTypeDef hi2c1;
 
+TIM_HandleTypeDef htim21;
+
 UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
@@ -53,6 +57,7 @@ void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_USART2_UART_Init(void);
 static void MX_I2C1_Init(void);
+static void MX_TIM21_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -108,7 +113,7 @@ HAL_StatusTypeDef init_mpu6050()
      * sample rate = gyro rate / (1 + sample reg)
      * if DLPF is off gyro = 8khz if on gyro = 1khz
      */
-    uint8_t sample_rate = 15; // sample rate = 500Hz
+    uint8_t sample_rate = 0;
     err = HAL_I2C_Mem_Write(
     		  &hi2c1
 			, MPU_I2C_ADDRESS
@@ -159,6 +164,22 @@ HAL_StatusTypeDef init_mpu6050()
     if(err)
     	return err;
 
+    /*
+     * configure the digital low pass filter
+     */
+    uint8_t dlpf_val = 0;
+    err = HAL_I2C_Mem_Write(
+    		  &hi2c1
+			, MPU_I2C_ADDRESS
+			, MPU_CONFIG
+			, 1 // mem address size
+			, &dlpf_val
+			, 1 //buff size
+			, 1000 // time out
+			);
+    if(err)
+    	return err;
+
     printf("Initialization Complete: id %d\r\n", who);
     return 0;
 }
@@ -169,7 +190,7 @@ HAL_StatusTypeDef get_accel(float* accel_data)
 	 * there are 6x 1-byte registers on the mcu6050 for
 	 * the accelerometer: X-high X-low Y-high Y-low Z-high Z-low
 	 * this will pack the high and low bytes for each into a single
-	 * uint16
+	 * int16
 	 */
 
 	HAL_StatusTypeDef err = 0;
@@ -200,6 +221,36 @@ HAL_StatusTypeDef get_accel(float* accel_data)
 	return err;
 }
 
+HAL_StatusTypeDef get_gyro(float* gyro_data)
+{
+	HAL_StatusTypeDef err = 0;
+	uint8_t gyro_buffer[6];
+	int16_t gyro_vals[3]; // this should be signed?
+
+    err = HAL_I2C_Mem_Read(
+		   &hi2c1
+		  , MPU_I2C_ADDRESS
+		  , MPU_GYRO_XOUT_H // start at x-high and read 6 after
+		  , 1 // mem address size
+		  , gyro_buffer
+		  , 6 // buff size
+		  , 1000 // timeout
+		  );
+    if(err)
+    	return err;
+
+    gyro_vals[0] = (uint16_t)(gyro_buffer[0] << 8  | gyro_buffer[1]);
+    gyro_vals[1] = (uint16_t)(gyro_buffer[2] << 8  | gyro_buffer[3]);
+    gyro_vals[2] = (uint16_t)(gyro_buffer[4] << 8  | gyro_buffer[5]);
+
+    for(int ii = 0; ii < 3; ++ii)
+    {
+		gyro_data[ii] = gyro_vals[ii] / 131.0;
+    }
+
+	return err;
+}
+
 /* USER CODE END 0 */
 
 /**
@@ -209,6 +260,11 @@ HAL_StatusTypeDef get_accel(float* accel_data)
 int main(void)
 {
   /* USER CODE BEGIN 1 */
+	uint32_t time_a, time_b;
+	  float accel_angle_y, angle_y = 0;
+	  float accel_data[3];
+	  float gyro_data[3];
+	  int err = 0;
 
   /* USER CODE END 1 */
 
@@ -232,24 +288,41 @@ int main(void)
   MX_GPIO_Init();
   MX_USART2_UART_Init();
   MX_I2C1_Init();
+  MX_TIM21_Init();
   /* USER CODE BEGIN 2 */
+	HAL_TIM_Base_Start(&htim21);
 
-  int err = 0;
-  err = init_mpu6050();
-  if(err)
-  {
-	  printf("ERROR in init: %d", err);
-	  while(1);
-  }
+	err = init_mpu6050();
+	if(err)
+	{
+		printf("ERROR in init: %d", err);
+		while(1);
+	}
+	get_accel(accel_data);
+	angle_y  = 180  /  M_PI* atan2(accel_data[0],accel_data[2]);
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-	  float accel_data[3];
+	  time_a = htim21.Instance->CNT;
 	  get_accel(accel_data);
-	  printf("x: %f y: %f z: %f\r\n", accel_data[0], accel_data[1], accel_data[2]);
+	  get_gyro(gyro_data);
+//	  printf("xa: %f ya: %f za: %f  ", accel_data[0], accel_data[1], accel_data[2]);
+//	  printf("xg: %f yg: %f zg: %f  ", gyro_data[0], gyro_data[1], gyro_data[2]);
+//	  HAL_Delay(100);
+
+
+
+	  time_b = htim21.Instance->CNT;
+	  time_a = time_b - time_a;
+
+	  HAL_GPIO_TogglePin( GPIOB, GPIO_PIN_3);
+	  //printf("time %lu \r\n", time_a);
+		accel_angle_y  = 180  /  M_PI* atan2(accel_data[0],accel_data[2]);
+		angle_y = 0.98 * (angle_y + (gyro_data[1] * time_a / 1000.0)) + (.02 * accel_angle_y);
+		printf("angle %f \r\n", angle_y);
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -349,6 +422,51 @@ static void MX_I2C1_Init(void)
   /* USER CODE BEGIN I2C1_Init 2 */
 
   /* USER CODE END I2C1_Init 2 */
+
+}
+
+/**
+  * @brief TIM21 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM21_Init(void)
+{
+
+  /* USER CODE BEGIN TIM21_Init 0 */
+
+  /* USER CODE END TIM21_Init 0 */
+
+  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+
+  /* USER CODE BEGIN TIM21_Init 1 */
+
+  /* USER CODE END TIM21_Init 1 */
+  htim21.Instance = TIM21;
+  htim21.Init.Prescaler = 32000;
+  htim21.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim21.Init.Period = 65535;
+  htim21.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim21.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_ENABLE;
+  if (HAL_TIM_Base_Init(&htim21) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+  if (HAL_TIM_ConfigClockSource(&htim21, &sClockSourceConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim21, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM21_Init 2 */
+
+  /* USER CODE END TIM21_Init 2 */
 
 }
 
