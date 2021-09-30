@@ -23,7 +23,7 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "mpu_util.h"
-#include <stdio.h>
+//#include <stdio.h>
 #include <math.h>
 /* USER CODE END Includes */
 
@@ -42,6 +42,8 @@
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
+ADC_HandleTypeDef hadc;
+
 I2C_HandleTypeDef hi2c1;
 
 TIM_HandleTypeDef htim21;
@@ -58,6 +60,7 @@ static void MX_GPIO_Init(void);
 static void MX_USART2_UART_Init(void);
 static void MX_I2C1_Init(void);
 static void MX_TIM21_Init(void);
+static void MX_ADC_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -265,6 +268,7 @@ int main(void)
 	  float accel_data[3];
 	  float gyro_data[3];
 	  int err = 0;
+	  uint32_t adc_val;
 
   /* USER CODE END 1 */
 
@@ -289,6 +293,7 @@ int main(void)
   MX_USART2_UART_Init();
   MX_I2C1_Init();
   MX_TIM21_Init();
+  MX_ADC_Init();
   /* USER CODE BEGIN 2 */
 	HAL_TIM_Base_Start(&htim21);
 
@@ -300,6 +305,7 @@ int main(void)
 	}
 	get_accel(accel_data);
 	angle_y  = 180  /  M_PI* atan2(accel_data[0],accel_data[2]);
+	HAL_ADC_Start(&hadc);
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -307,8 +313,8 @@ int main(void)
   while (1)
   {
 	  time_a = htim21.Instance->CNT;
-	  get_accel(accel_data);
-	  get_gyro(gyro_data);
+//	  get_accel(accel_data);
+//	  get_gyro(gyro_data);
 //	  printf("xa: %f ya: %f za: %f  ", accel_data[0], accel_data[1], accel_data[2]);
 //	  printf("xg: %f yg: %f zg: %f  ", gyro_data[0], gyro_data[1], gyro_data[2]);
 //	  HAL_Delay(100);
@@ -320,9 +326,12 @@ int main(void)
 
 	  HAL_GPIO_TogglePin( GPIOB, GPIO_PIN_3);
 	  //printf("time %lu \r\n", time_a);
-		accel_angle_y  = 180  /  M_PI* atan2(accel_data[0],accel_data[2]);
-		angle_y = 0.98 * (angle_y + (gyro_data[1] * time_a / 1000.0)) + (.02 * accel_angle_y);
-		printf("angle %f \r\n", angle_y);
+//		accel_angle_y  = 180  /  M_PI* atan2(accel_data[0],accel_data[2]);
+//		angle_y = 0.98 * (angle_y + (gyro_data[1] * time_a / 1000.0)) + (.02 * accel_angle_y);
+//		printf("angle %f \r\n", angle_y);
+
+	  adc_val = HAL_ADC_GetValue(&hadc);
+	  printf("%lu\r\n", adc_val);
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -377,6 +386,60 @@ void SystemClock_Config(void)
   {
     Error_Handler();
   }
+}
+
+/**
+  * @brief ADC Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_ADC_Init(void)
+{
+
+  /* USER CODE BEGIN ADC_Init 0 */
+
+  /* USER CODE END ADC_Init 0 */
+
+  ADC_ChannelConfTypeDef sConfig = {0};
+
+  /* USER CODE BEGIN ADC_Init 1 */
+
+  /* USER CODE END ADC_Init 1 */
+  /** Configure the global features of the ADC (Clock, Resolution, Data Alignment and number of conversion)
+  */
+  hadc.Instance = ADC1;
+  hadc.Init.OversamplingMode = DISABLE;
+  hadc.Init.ClockPrescaler = ADC_CLOCK_SYNC_PCLK_DIV2;
+  hadc.Init.Resolution = ADC_RESOLUTION_8B;
+  hadc.Init.SamplingTime = ADC_SAMPLETIME_1CYCLE_5;
+  hadc.Init.ScanConvMode = ADC_SCAN_DIRECTION_FORWARD;
+  hadc.Init.DataAlign = ADC_DATAALIGN_RIGHT;
+  hadc.Init.ContinuousConvMode = ENABLE;
+  hadc.Init.DiscontinuousConvMode = DISABLE;
+  hadc.Init.ExternalTrigConvEdge = ADC_EXTERNALTRIGCONVEDGE_NONE;
+  hadc.Init.ExternalTrigConv = ADC_SOFTWARE_START;
+  hadc.Init.DMAContinuousRequests = DISABLE;
+  hadc.Init.EOCSelection = ADC_EOC_SINGLE_CONV;
+  hadc.Init.Overrun = ADC_OVR_DATA_PRESERVED;
+  hadc.Init.LowPowerAutoWait = DISABLE;
+  hadc.Init.LowPowerFrequencyMode = DISABLE;
+  hadc.Init.LowPowerAutoPowerOff = DISABLE;
+  if (HAL_ADC_Init(&hadc) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /** Configure for the selected ADC regular channel to be converted.
+  */
+  sConfig.Channel = ADC_CHANNEL_0;
+  sConfig.Rank = ADC_RANK_CHANNEL_NUMBER;
+  if (HAL_ADC_ConfigChannel(&hadc, &sConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN ADC_Init 2 */
+
+  /* USER CODE END ADC_Init 2 */
+
 }
 
 /**
