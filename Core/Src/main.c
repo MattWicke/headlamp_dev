@@ -183,7 +183,7 @@ HAL_StatusTypeDef init_mpu6050()
     if(err)
     	return err;
 
-    printf("Initialization Complete: id %d\r\n", who);
+    //printf("Initialization Complete: id %d\r\n", who);
     return 0;
 }
 
@@ -264,11 +264,12 @@ int main(void)
 {
   /* USER CODE BEGIN 1 */
 	uint32_t time_a, time_b;
-	  float accel_angle_y, angle_y = 0;
+	  float accel_angle_x, angle_x = 0;
+	  float adc_val;
 	  float accel_data[3];
 	  float gyro_data[3];
 	  int err = 0;
-	  uint32_t adc_val;
+	  uint32_t adc_val_raw;
 
   /* USER CODE END 1 */
 
@@ -300,11 +301,11 @@ int main(void)
 	err = init_mpu6050();
 	if(err)
 	{
-		printf("ERROR in init: %d", err);
+		//printf("ERROR in init: %d", err);
 		while(1);
 	}
 	get_accel(accel_data);
-	angle_y  = 180  /  M_PI* atan2(accel_data[0],accel_data[2]);
+	angle_x  = 180  /  M_PI* atan2(accel_data[2],accel_data[0]);
 	HAL_ADC_Start(&hadc);
   /* USER CODE END 2 */
 
@@ -313,25 +314,32 @@ int main(void)
   while (1)
   {
 	  time_a = htim21.Instance->CNT;
-//	  get_accel(accel_data);
-//	  get_gyro(gyro_data);
+	  get_accel(accel_data);
+	  get_gyro(gyro_data);
+	  adc_val_raw = HAL_ADC_GetValue(&hadc);
+	  adc_val = adc_val_raw * 180.0 / 256;
 //	  printf("xa: %f ya: %f za: %f  ", accel_data[0], accel_data[1], accel_data[2]);
 //	  printf("xg: %f yg: %f zg: %f  ", gyro_data[0], gyro_data[1], gyro_data[2]);
 //	  HAL_Delay(100);
+
+        //printf("angle %f \r\n", angle_x);
+	  if(adc_val < angle_x)
+	      HAL_GPIO_WritePin(GPIOB, GPIO_PIN_3, GPIO_PIN_SET);
+	  else
+	      HAL_GPIO_WritePin(GPIOB, GPIO_PIN_3, GPIO_PIN_RESET);
+
 
 
 
 	  time_b = htim21.Instance->CNT;
 	  time_a = time_b - time_a;
 
-	  HAL_GPIO_TogglePin( GPIOB, GPIO_PIN_3);
+	  //HAL_GPIO_TogglePin( GPIOB, GPIO_PIN_3);
 	  //printf("time %lu \r\n", time_a);
-//		accel_angle_y  = 180  /  M_PI* atan2(accel_data[0],accel_data[2]);
-//		angle_y = 0.98 * (angle_y + (gyro_data[1] * time_a / 1000.0)) + (.02 * accel_angle_y);
-//		printf("angle %f \r\n", angle_y);
+		accel_angle_x  = 180  /  M_PI* atan2(accel_data[1],accel_data[2]);
+		angle_x = 0.98 * (angle_x + (gyro_data[0] * time_a / 1000.0)) + (.02 * accel_angle_x);
 
-	  adc_val = HAL_ADC_GetValue(&hadc);
-	  printf("%lu\r\n", adc_val);
+	  //printf("%lu\r\n", adc_val);
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
